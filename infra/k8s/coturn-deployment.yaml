@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coturn
+  namespace: mini-browser
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: coturn
+  template:
+    metadata:
+      labels:
+        app: coturn
+    spec:
+      hostNetwork: true  # required for TURN relay – coturn needs host networking
+      containers:
+        - name: coturn
+          image: coturn/coturn:latest
+          args:
+            - "-n"
+            - "--log-file=stdout"
+            - "--lt-cred-mech"
+            - "--user=user:password"
+            - "--realm=mini-browser.local"
+            - "--no-tlsv1"
+            - "--no-tlsv1_1"
+            - "--allow-loopback-peers"
+          ports:
+            - containerPort: 3478
+              protocol: UDP
+              name: turn-udp
+            - containerPort: 3478
+              protocol: TCP
+              name: turn-tcp
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coturn
+  namespace: mini-browser
+spec:
+  selector:
+    app: coturn
+  ports:
+    - name: turn-udp
+      port: 3478
+      targetPort: 3478
+      protocol: UDP
+    - name: turn-tcp
+      port: 3478
+      targetPort: 3478
+      protocol: TCP
+  type: ClusterIP

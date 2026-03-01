@@ -1,0 +1,34 @@
+# The orchestrator needs to create/delete Pods and Services in the same namespace
+# so it can manage runner pods instead of Docker containers in K8s mode.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orchestrator
+  namespace: mini-browser
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: orchestrator-runner-role
+  namespace: mini-browser
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services"]
+    verbs: ["get", "list", "create", "delete", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: orchestrator-runner-binding
+  namespace: mini-browser
+subjects:
+  - kind: ServiceAccount
+    name: orchestrator
+    namespace: mini-browser
+roleRef:
+  kind: Role
+  name: orchestrator-runner-role
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: mini-browser
+  labels:
+    app: orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+      annotations:
+        # Tell Prometheus to scrape this pod.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: orchestrator
+      containers:
+        - name: orchestrator
+          image: mini-browser-orchestrator:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+              name: http
+          env:
+            - name: PORT
+              value: "8090"
+            - name: MAX_SESSIONS
+              value: "20"
+            - name: SESSION_TIMEOUT
+              value: "30m"
+            - name: RUNNER_IMAGE
+              value: "mini-browser-runner:latest"
+            # In K8s mode the orchestrator creates Pods, not Docker containers.
+            # Set RUNNER_BACKEND=k8s and RUNNER_NAMESPACE=mini-browser.
+            - name: RUNNER_BACKEND
+              value: "k8s"
+            - name: RUNNER_NAMESPACE
+              value: "mini-browser"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: STUN_HOST
+              value: "stun:stun.l.google.com:19302"
+            - name: TURN_ENABLED
+              value: "false"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+            initialDelaySeconds: 3
+            periodSeconds: 10

@@ -1,0 +1,118 @@
+networks:
+  mini-browser-net:
+    name: mini-browser-net
+    driver: bridge
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+
+services:
+  orchestrator:
+    build:
+      context: ../../orchestrator
+      dockerfile: Dockerfile
+    image: mini-browser-orchestrator:latest
+    container_name: orchestrator
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      PORT: "8090"
+      MAX_SESSIONS: "10"
+      SESSION_TIMEOUT: "30m"
+      RUNNER_IMAGE: "mini-browser-runner:latest"
+      RUNNER_NETWORK: "mini-browser-net"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      LOG_LEVEL: "info"
+      RUNNER_SHM_SIZE: "1073741824"
+      RUNNER_CHROME_FLAGS: "--no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer --disable-features=UseDBus,VizDisplayCompositor"
+      STUN_HOST: "stun:stun.l.google.com:19302"
+      TURN_ENABLED: "${TURN_ENABLED:-false}"
+      TURN_HOST: "coturn"
+      TURN_PORT: "3478"
+      TURN_USERNAME: "user"
+      TURN_CREDENTIAL: "password"
+      WEBRTC_TIMEOUT_SEC: "15"
+      FALLBACK_FPS: "5"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8090:8090"
+    networks:
+      - mini-browser-net
+    depends_on:
+      - coturn
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  coturn:
+    image: coturn/coturn:latest
+    container_name: coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+    volumes:
+      - ./coturn.conf:/etc/coturn/turnserver.conf:ro
+    networks:
+      - mini-browser-net
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    image: mini-browser-frontend:latest
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    networks:
+      - mini-browser-net
+    depends_on:
+      - orchestrator
+    environment:
+      VITE_API_BASE: "http://orchestrator:8090"
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+    networks:
+      - mini-browser-net
+    depends_on:
+      - orchestrator
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/var/lib/grafana/dashboards/sessions.json"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./grafana-dashboard-provider.yml:/etc/grafana/provisioning/dashboards/default.yml:ro
+    networks:
+      - mini-browser-net
+    depends_on:
+      - prometheus
