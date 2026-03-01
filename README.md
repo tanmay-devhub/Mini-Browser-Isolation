@@ -46,7 +46,7 @@ A self-hosted browser isolation platform. Each session runs headless Chromium in
 ## Quick start
 
 ```bash
-git clone https://github.com/<you>/mini-browser-isolation.git
+git clone https://github.com/tanmay-devhub/Mini-Browser-Isolation
 cd mini-browser-isolation
 
 # Build images and start all services
